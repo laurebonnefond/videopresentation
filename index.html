@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Laure Bonnefond – Présentation Alternance</title>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script type="text/babel" src="animations.jsx"></script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,700;1,300&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; background: #000; overflow: hidden; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+// ── Color palette (from logo)
+const C = {
+  teal:      'oklch(0.65 0.13 192)',
+  tealLight: 'oklch(0.80 0.10 192)',
+  tealDark:  'oklch(0.35 0.10 220)',
+  navy:      'oklch(0.22 0.07 240)',
+  navyDeep:  'oklch(0.12 0.05 240)',
+  white:     'oklch(0.98 0.005 220)',
+  offWhite:  'oklch(0.94 0.008 210)',
+  accent:    'oklch(0.72 0.14 170)',
+};
+
+// ── Helpers
+function lerp(a, b, t) { return a + (b - a) * t; }
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+function progress(time, start, end) {
+  return clamp((time - start) / (end - start), 0, 1);
+}
+function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+function easeOutBack(t) {
+  const c1 = 1.70158, c3 = c1 + 1;
+  return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+}
+function easeInOutQuad(t) { return t < 0.5 ? 2*t*t : -1+(4-2*t)*t; }
+function easeInExpo(t) { return t === 0 ? 0 : Math.pow(2, 10*(t-1)); }
+function easeOutElastic(t) {
+  const c4 = (2*Math.PI)/3;
+  if (t===0) return 0; if (t===1) return 1;
+  return Math.pow(2,-10*t)*Math.sin((t*10-0.75)*c4)+1;
+}
+
+// ── Particle field background
+function Particles({ count = 60, time }) {
+  const particles = useRef([]);
+  if (particles.current.length === 0) {
+    for (let i = 0; i < count; i++) {
+      particles.current.push({
+        x: Math.random(), y: Math.random(),
+        r: 0.5 + Math.random() * 2,
+        speed: 0.003 + Math.random() * 0.008,
+        phase: Math.random() * Math.PI * 2,
+        opacity: 0.1 + Math.random() * 0.4,
+      });
+    }
+  }
+  return (
+    <svg style={{ position:'absolute', inset:0, width:'100%', height:'100%', overflow:'hidden' }}>
+      {particles.current.map((p, i) => {
+        const y = (p.y + p.speed * time) % 1;
+        const x = p.x + Math.sin(time * 0.3 + p.phase) * 0.02;
+        return (
+          <circle
+            key={i}
+            cx={`${x * 100}%`}
+            cy={`${y * 100}%`}
+            r={p.r}
+            fill={C.teal}
+            opacity={p.opacity * (0.5 + 0.5 * Math.sin(time * 0.5 + p.phase))}
+          />
+        );
+      })}
+    </svg>
+  );
+}
+
+// ── ECG line SVG
+function ECGLine({ progress: prog, color = C.teal, width = 400, height = 60, strokeWidth = 2 }) {
+  const path = `M0,${height/2} L${width*0.1},${height/2} L${width*0.18},${height/2} L${width*0.22},${height*0.1} L${width*0.26},${height*0.9} L${width*0.30},${height/2} L${width*0.35},${height/2} L${width*0.45},${height/2} L${width*0.49},${height*0.2} L${width*0.53},${height*0.85} L${width*0.57},${height/2} L${width*0.65},${height/2} L${width},${height/2}`;
+  const totalLength = 1200;
+  const drawn = totalLength * prog;
+  return (
+    <svg width={width} height={height} style={{ overflow:'visible' }}>
+      <path d={path} fill="none" stroke={color} strokeWidth={strokeWidth}
+        strokeDasharray={totalLength}
+        strokeDashoffset={totalLength - drawn}
+        strokeLinecap="round" strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+// ── Circuit board dots
+function CircuitDots({ progress: prog, size = 120 }) {
+  const nodes = [
+    [0.5,0.1],[0.8,0.2],[0.9,0.5],[0.7,0.8],[0.5,0.9],
+    [0.2,0.8],[0.1,0.5],[0.3,0.2],[0.5,0.5],
+  ];
+  const edges = [[0,1],[1,2],[2,3],[3,4],[4,5],[5,6],[6,7],[7,0],[8,0],[8,2],[8,4],[8,6]];
+  return (
+    <svg width={size} height={size} style={{ overflow:'visible' }}>
+      {edges.map(([a,b],i) => {
+        const p = clamp((prog - i*0.05) * 3, 0, 1);
+        const x1 = nodes[a][0]*size, y1 = nodes[a][1]*size;
+        const x2 = nodes[b][0]*size, y2 = nodes[b][1]*size;
+        const ex = lerp(x1, x2, p), ey = lerp(y1, y2, p);
+        return <line key={i} x1={x1} y1={y1} x2={ex} y2={ey}
+          stroke={C.teal} strokeWidth={1} opacity={0.6} />;
+      })}
+      {nodes.map(([x,y],i) => {
+        const p = easeOutBack(clamp((prog - i*0.07)*4, 0, 1));
+        return <circle key={i} cx={x*size} cy={y*size} r={3*p}
+          fill={C.tealLight} opacity={0.9} />;
+      })}
+    </svg>
+  );
+}
+
+// ── Hexagon shape
+function Hex({ cx=0, cy=0, r=40, fill='none', stroke=C.teal, strokeWidth=1.5, opacity=1 }) {
+  const pts = Array.from({length:6},(_,i)=>{
+    const a = Math.PI/3*i - Math.PI/6;
+    return `${cx+r*Math.cos(a)},${cy+r*Math.sin(a)}`;
+  }).join(' ');
+  return <polygon points={pts} fill={fill} stroke={stroke} strokeWidth={strokeWidth} opacity={opacity} />;
+}
+
+// ── Tag chip
+function Tag({ text, delay, time, x, y }) {
+  const p = easeOutBack(clamp((time - delay)*2.5, 0, 1));
+  return (
+    <div style={{
+      position:'absolute', left:x, top:y,
+      transform:`scale(${p}) translateY(${lerp(20,0,p)}px)`,
+      opacity: p,
+      background:`linear-gradient(135deg, ${C.tealDark}, ${C.navy})`,
+      border:`1px solid ${C.teal}`,
+      borderRadius:24,
+      padding:'6px 18px',
+      color: C.tealLight,
+      fontSize:13,
+      fontFamily:"'DM Sans', sans-serif",
+      fontWeight:500,
+      letterSpacing:'0.05em',
+      whiteSpace:'nowrap',
+      backdropFilter:'blur(8px)',
+      boxShadow:`0 0 20px ${C.teal}40`,
+    }}>{text}</div>
+  );
+}
+
+// ── Scene 1: Intro — logo reveal (0–3.5s)
+function Scene1({ time }) {
+  const TOTAL = 3.5;
+  const fadeIn = easeOutCubic(progress(time, 0, 1.2));
+  const logoScale = easeOutBack(progress(time, 0.3, 1.8));
+  const nameSlide = easeOutCubic(progress(time, 0.8, 2.2));
+  const subtitleFade = easeOutCubic(progress(time, 1.4, 2.5));
+  const ecgProg = progress(time, 1.5, 3.2);
+  const fadeOut = time > 3.0 ? easeInExpo(progress(time, 3.0, TOTAL)) : 0;
+
+  return (
+    <div style={{
+      position:'absolute', inset:0, opacity: fadeIn * (1 - fadeOut),
+      display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+    }}>
+      {/* Glow ring */}
+      <div style={{
+        position:'absolute', width:320, height:320, borderRadius:'50%',
+        background:`radial-gradient(circle, ${C.teal}15 0%, transparent 70%)`,
+        transform:`scale(${logoScale})`,
+      }} />
+
+      {/* Logo */}
+      <div style={{
+        transform:`scale(${logoScale})`, marginBottom:24,
+        filter:`drop-shadow(0 0 30px ${C.teal}60)`,
+      }}>
+        <img src="uploads/logo.png" alt="PréventIA-Lab" style={{ width:160, height:160, objectFit:'contain' }} />
+      </div>
+
+      {/* Name */}
+      <div style={{
+        fontFamily:"'DM Serif Display', serif",
+        fontSize:52, fontWeight:400, letterSpacing:'-0.01em',
+        color: C.white,
+        transform:`translateX(${lerp(-40,0,nameSlide)}px)`,
+        opacity: nameSlide,
+        textShadow:`0 0 40px ${C.teal}50`,
+      }}>
+        Laure <span style={{ color: C.teal }}>Bonnefond</span>
+      </div>
+
+      {/* ECG line */}
+      <div style={{ marginTop:16, opacity: subtitleFade }}>
+        <ECGLine progress={ecgProg} color={C.teal} width={320} height={44} strokeWidth={2} />
+      </div>
+
+      {/* Tagline */}
+      <div style={{
+        fontFamily:"'DM Sans', sans-serif",
+        fontSize:16, fontWeight:300, letterSpacing:'0.25em',
+        color: C.tealLight, marginTop:8,
+        opacity: subtitleFade, textTransform:'uppercase',
+      }}>
+        Profil Hybride · Cherche Alternance
+      </div>
+    </div>
+  );
+}
+
+// ── Scene 2: Qui suis-je ? (3.5–8s)
+function Scene2({ time }) {
+  const fadeIn  = easeOutCubic(progress(time, 3.5, 4.8));
+  const fadeOut = time > 7.3 ? easeInExpo(progress(time, 7.3, 8.0)) : 0;
+  const op = fadeIn * (1 - fadeOut);
+
+  const titleSlide = easeOutCubic(progress(time, 3.5, 4.8));
+  const line1 = easeOutCubic(progress(time, 4.2, 5.2));
+  const line2 = easeOutCubic(progress(time, 4.6, 5.6));
+  const line3 = easeOutCubic(progress(time, 5.0, 6.0));
+  const circuitProg = progress(time, 4.0, 7.0);
+
+  return (
+    <div style={{
+      position:'absolute', inset:0, opacity: op,
+      display:'flex', alignItems:'center', justifyContent:'center',
+    }}>
+      {/* Left: circuit graphic */}
+      <div style={{
+        position:'absolute', left:80, top:'50%', transform:'translateY(-50%)',
+        opacity: circuitProg,
+      }}>
+        <CircuitDots progress={circuitProg} size={160} />
+      </div>
+
+      {/* Center content */}
+      <div style={{ textAlign:'center', maxWidth:600 }}>
+        <div style={{
+          fontFamily:"'DM Serif Display', serif",
+          fontSize:13, letterSpacing:'0.3em', textTransform:'uppercase',
+          color: C.teal, marginBottom:16,
+          opacity: titleSlide,
+          transform:`translateY(${lerp(20,0,titleSlide)}px)`,
+        }}>Qui suis-je ?</div>
+
+        <div style={{
+          fontFamily:"'DM Serif Display', serif",
+          fontSize:46, color: C.white, lineHeight:1.1,
+          opacity: line1,
+          transform:`translateX(${lerp(-30,0,line1)}px)`,
+          marginBottom:8,
+        }}>Santé.<br />
+        <span style={{ color: C.teal }}>Intelligence.</span><br />
+        <span style={{ fontStyle:'italic', color: C.tealLight }}>Initiative.</span></div>
+
+        <div style={{
+          fontFamily:"'DM Sans', sans-serif",
+          fontSize:17, fontWeight:300, color: C.offWhite,
+          lineHeight:1.6, marginTop:20,
+          opacity: line2,
+          transform:`translateY(${lerp(15,0,line2)}px)`,
+          maxWidth:480, margin:'20px auto 0',
+        }}>
+          Étudiante en Master Informatique à l'IPSSI Bordeaux,<br />
+          avec un parcours en <strong style={{color:C.tealLight}}>santé & urgences</strong> et <strong style={{color:C.tealLight}}>gestion de projet</strong>.
+        </div>
+
+        <div style={{
+          marginTop:20, opacity: line3,
+          transform:`translateY(${lerp(15,0,line3)}px)`,
+          fontFamily:"'DM Sans', sans-serif",
+          fontSize:14, letterSpacing:'0.08em',
+          color: C.teal,
+        }}>
+          Fondatrice · PréventIA-Lab
+        </div>
+      </div>
+
+      {/* Right: hex grid */}
+      <div style={{ position:'absolute', right:60, top:'50%', transform:'translateY(-50%)', opacity: circuitProg * 0.5 }}>
+        <svg width={180} height={200}>
+          {[[-0.5,0],[0.5,0],[1,0.87],[0.5,1.73],[-0.5,1.73],[-1,0.87],[0,0.87]].map(([dx,dy],i) => (
+            <Hex key={i} cx={90+dx*52} cy={100+dy*30} r={28}
+              stroke={C.teal} strokeWidth={0.8}
+              opacity={clamp((circuitProg - i*0.08)*2, 0, 1) * 0.4}
+            />
+          ))}
+        </svg>
+      </div>
+    </div>
+  );
+}
+
+// ── Scene 3: Les 3 piliers (8–14s)
+function Scene3({ time }) {
+  const fadeIn  = easeOutCubic(progress(time, 8.0, 9.0));
+  const fadeOut = time > 13.2 ? easeInExpo(progress(time, 13.2, 14.0)) : 0;
+  const op = fadeIn * (1 - fadeOut);
+
+  const titleP = easeOutCubic(progress(time, 8.0, 9.2));
+  const pillars = [
+    { label:'Santé & Prévention', icon:'🫀', desc:'Soins d\'urgences, santé au travail, prévention des risques professionnels', delay:8.5, color:'oklch(0.72 0.14 170)' },
+    { label:'Intelligence Artificielle', icon:'🧠', desc:'Machine Learning, Data Science, Python, LLMs', delay:9.1, color: C.teal },
+    { label:'Gestion de Projet', icon:'⚗️', desc:'Management de projet, entrepreneuriat, stratégie d\'entreprise', delay:9.7, color:'oklch(0.65 0.13 210)' },
+  ];
+
+  return (
+    <div style={{
+      position:'absolute', inset:0, opacity: op,
+      display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+    }}>
+      <div style={{
+        fontFamily:"'DM Serif Display', serif",
+        fontSize:13, letterSpacing:'0.3em', textTransform:'uppercase',
+        color: C.teal, marginBottom:50,
+        opacity: titleP,
+        transform:`translateY(${lerp(-20,0,titleP)}px)`,
+      }}>Mon profil hybride</div>
+
+      <div style={{ display:'flex', gap:32, alignItems:'stretch' }}>
+        {pillars.map((p, i) => {
+          const pp = easeOutBack(clamp((time - p.delay) * 2, 0, 1));
+          const hovered = false;
+          return (
+            <div key={i} style={{
+              width:220, padding:'36px 28px',
+              background:`linear-gradient(160deg, ${C.navyDeep}ee, ${C.navy}cc)`,
+              border:`1px solid ${p.color}40`,
+              borderRadius:16,
+              transform:`translateY(${lerp(60,0,pp)}px) scale(${lerp(0.8,1,pp)})`,
+              opacity: pp,
+              boxShadow:`0 0 40px ${p.color}20, inset 0 1px 0 ${p.color}20`,
+              backdropFilter:'blur(12px)',
+              textAlign:'center',
+            }}>
+              <div style={{ fontSize:36, marginBottom:16 }}>{p.icon}</div>
+              <div style={{
+                fontFamily:"'DM Sans', sans-serif",
+                fontWeight:600, fontSize:15, color: p.color,
+                marginBottom:10, letterSpacing:'0.03em',
+              }}>{p.label}</div>
+              <div style={{
+                fontFamily:"'DM Sans', sans-serif",
+                fontWeight:300, fontSize:13, color: C.offWhite,
+                lineHeight:1.6, opacity:0.8,
+              }}>{p.desc}</div>
+              {/* Bottom accent line */}
+              <div style={{
+                position:'absolute', bottom:0, left:'20%', right:'20%', height:2,
+                background:`linear-gradient(90deg, transparent, ${p.color}, transparent)`,
+                borderRadius:2,
+              }} />
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Connecting line */}
+      <svg style={{ position:'absolute', pointerEvents:'none' }} width={800} height={200}
+        viewBox="0 0 800 200">
+        {(() => {
+          const p = clamp((time - 10.0) * 0.8, 0, 1);
+          return <path d="M180,100 Q400,40 620,100"
+            fill="none" stroke={C.teal} strokeWidth={0.8}
+            opacity={p * 0.3} strokeDasharray="6,6" />;
+        })()}
+      </svg>
+    </div>
+  );
+}
+
+// ── Scene 4: Compétences — réseau neuronal + barres centrées (14–19s)
+function Scene4({ time }) {
+  const fadeIn  = easeOutCubic(progress(time, 14.0, 15.0));
+  const fadeOut = time > 18.2 ? easeInExpo(progress(time, 18.2, 19.0)) : 0;
+  const op = fadeIn * (1 - fadeOut);
+  const titleP = easeOutCubic(progress(time, 14.0, 15.0));
+
+  // Tags disposés en ellipse autour du centre
+  // Centre = 50%, 48% (légèrement au-dessus du centre pour laisser place aux barres)
+  // Ellipse rx=38%, ry=28%
+  const cx = 50, cy = 44;
+  const rx = 37, ry = 26;
+  const skills = [
+    { text: 'Python / R',            angle: -90,  delay: 14.3 },
+    { text: 'Machine Learning',      angle: -45,  delay: 14.5 },
+    { text: 'Gestion de projet',     angle:   0,  delay: 14.7 },
+    { text: 'Soins d\'urgences',     angle:  45,  delay: 14.9 },
+    { text: 'Santé au travail',      angle:  90,  delay: 15.1 },
+    { text: 'Prévention des risques',angle: 135,  delay: 15.3 },
+    { text: 'Entrepreneuriat',       angle: 180,  delay: 15.5 },
+    { text: 'Open Source',           angle: -135, delay: 15.7 },
+  ];
+
+  const bars = [
+    { label:'Data',      pct:0.85, delay:14.8 },
+    { label:'IA',        pct:0.80, delay:15.0 },
+    { label:'Urgences',  pct:0.92, delay:15.2 },
+    { label:'Projet',    pct:0.88, delay:15.4 },
+    { label:'Prévent.',  pct:0.90, delay:15.6 },
+  ];
+
+  return (
+    <div style={{ position:'absolute', inset:0, opacity: op }}>
+      {/* Title */}
+      <div style={{
+        position:'absolute', top:52, left:0, right:0, textAlign:'center',
+        fontFamily:"'DM Serif Display', serif",
+        fontSize:13, letterSpacing:'0.3em', textTransform:'uppercase',
+        color: C.teal, opacity: titleP,
+        transform:`translateY(${lerp(-20,0,titleP)}px)`,
+      }}>Compétences clés</div>
+
+      {/* Neural network lines (tags → center) */}
+      <svg style={{ position:'absolute', inset:0, width:'100%', height:'100%', pointerEvents:'none' }}>
+        {skills.map((s, i) => {
+          const rad = s.angle * Math.PI / 180;
+          const tx = cx + rx * Math.cos(rad);
+          const ty = cy + ry * Math.sin(rad);
+          const p = easeOutCubic(clamp((time - s.delay)*2.5, 0, 1));
+          return (
+            <line key={i}
+              x1={`${cx}%`} y1={`${cy}%`}
+              x2={`${tx}%`} y2={`${ty}%`}
+              stroke={C.teal} strokeWidth={0.6}
+              opacity={p * 0.35}
+              strokeDasharray="4,4"
+            />
+          );
+        })}
+        {/* Center node pulse */}
+        {[18,30,44].map((r,i) => {
+          const pulse = 0.3 + 0.2 * Math.sin(time * 2.5 + i);
+          const p = easeOutCubic(clamp((time - 14.2)*2, 0, 1));
+          return <circle key={i} cx={`${cx}%`} cy={`${cy}%`} r={r}
+            fill="none" stroke={C.teal} strokeWidth={0.8}
+            opacity={p * pulse} />;
+        })}
+      </svg>
+
+      {/* Tags en ellipse */}
+      {skills.map((s, i) => {
+        const rad = s.angle * Math.PI / 180;
+        const tx = cx + rx * Math.cos(rad);
+        const ty = cy + ry * Math.sin(rad);
+        const p = easeOutBack(clamp((time - s.delay)*2.5, 0, 1));
+        return (
+          <div key={i} style={{
+            position:'absolute',
+            left:`${tx}%`, top:`${ty}%`,
+            transform:`translate(-50%, -50%) scale(${p})`,
+            opacity: p,
+            background:`linear-gradient(135deg, ${C.tealDark}, ${C.navy})`,
+            border:`1px solid ${C.teal}50`,
+            borderRadius:20,
+            padding:'5px 14px',
+            color: C.tealLight,
+            fontSize:12,
+            fontFamily:"'DM Sans', sans-serif",
+            fontWeight:500,
+            letterSpacing:'0.04em',
+            whiteSpace:'nowrap',
+            boxShadow:`0 0 16px ${C.teal}25`,
+          }}>{s.text}</div>
+        );
+      })}
+
+      {/* Barres centrées */}
+      <div style={{
+        position:'absolute', bottom:44, left:'50%', transform:'translateX(-50%)',
+        display:'flex', gap:18, alignItems:'flex-end',
+      }}>
+        {bars.map((b, i) => {
+          const p = easeOutCubic(clamp((time - b.delay)*1.5, 0, 1));
+          return (
+            <div key={i} style={{ textAlign:'center', display:'flex', flexDirection:'column', alignItems:'center', gap:5 }}>
+              <div style={{ fontSize:11, fontFamily:"'DM Sans',sans-serif", color: C.tealLight, letterSpacing:'0.05em' }}>
+                {Math.round(b.pct*p*100)}%
+              </div>
+              <div style={{
+                width:34, height:72, background:`${C.navy}80`, borderRadius:4,
+                border:`1px solid ${C.teal}30`, display:'flex', alignItems:'flex-end', overflow:'hidden',
+              }}>
+                <div style={{
+                  width:'100%', height:`${b.pct*p*100}%`,
+                  background:`linear-gradient(to top, ${C.teal}, ${C.tealLight})`,
+                  borderRadius:3,
+                }} />
+              </div>
+              <div style={{ fontSize:10, fontFamily:"'DM Sans',sans-serif", color: C.offWhite, letterSpacing:'0.04em', opacity:0.7 }}>
+                {b.label}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── Scene 5: Motivation & Projet (19–24s)
+function Scene5({ time }) {
+  const fadeIn  = easeOutCubic(progress(time, 19.0, 20.0));
+  const fadeOut = time > 23.2 ? easeInExpo(progress(time, 23.2, 24.0)) : 0;
+  const op = fadeIn * (1 - fadeOut);
+
+  const quoteP = easeOutCubic(progress(time, 19.3, 21.0));
+  const logoP  = easeOutBack(progress(time, 20.0, 21.5));
+  const descP  = easeOutCubic(progress(time, 20.8, 22.0));
+  const tagP   = easeOutBack(progress(time, 21.5, 22.5));
+
+  return (
+    <div style={{
+      position:'absolute', inset:0, opacity: op,
+      display:'flex', alignItems:'center', justifyContent:'center',
+    }}>
+      {/* Left: quote */}
+      <div style={{
+        maxWidth:420, paddingRight:48,
+        opacity: quoteP,
+        transform:`translateX(${lerp(-40,0,quoteP)}px)`,
+      }}>
+        <div style={{
+          fontFamily:"'DM Serif Display', serif",
+          fontSize:14, letterSpacing:'0.25em', textTransform:'uppercase',
+          color: C.teal, marginBottom:20,
+        }}>Ma Motivation</div>
+
+        <div style={{
+          fontFamily:"'DM Serif Display', serif",
+          fontSize:32, color: C.white, lineHeight:1.3,
+          fontStyle:'italic',
+        }}>
+          "Utiliser l'IA<br />pour transformer<br />
+          <span style={{ color: C.teal }}>la prévention</span><br />
+          en santé."
+        </div>
+
+        <div style={{
+          marginTop:24, width:60, height:2,
+          background:`linear-gradient(90deg, ${C.teal}, transparent)`,
+        }} />
+
+        <div style={{
+          fontFamily:"'DM Sans', sans-serif",
+          fontSize:14, fontWeight:300, color: C.offWhite,
+          marginTop:20, lineHeight:1.7, opacity:0.85,
+        }}>
+          Passion pour l'intersection entre les données,<br />
+          la santé préventive et l'impact concret.
+        </div>
+      </div>
+
+      {/* Divider */}
+      <div style={{ width:1, height:240, background:`linear-gradient(to bottom, transparent, ${C.teal}60, transparent)` }} />
+
+      {/* Right: PréventIA-Lab */}
+      <div style={{
+        paddingLeft:48, textAlign:'center',
+        opacity: logoP,
+        transform:`scale(${lerp(0.7,1,logoP)})`,
+      }}>
+        <img src="uploads/logo.png" alt="PréventIA-Lab"
+          style={{ width:120, height:120, objectFit:'contain', filter:`drop-shadow(0 0 20px ${C.teal}50)` }} />
+
+        <div style={{
+          fontFamily:"'DM Sans', sans-serif",
+          fontSize:20, fontWeight:700, color: C.white,
+          marginTop:12, letterSpacing:'0.02em',
+        }}>
+          Prév<span style={{color:C.teal}}>ent</span><span style={{color:'oklch(0.6 0.16 230)'}}>IA</span>-Lab
+        </div>
+
+        <div style={{
+          fontFamily:"'DM Sans', sans-serif",
+          fontSize:12, color: C.tealLight, letterSpacing:'0.2em',
+          textTransform:'uppercase', marginTop:6,
+          opacity: descP,
+        }}>Prévenir · Comprendre · Agir</div>
+
+        <div style={{
+          marginTop:20, opacity: tagP,
+          transform:`translateY(${lerp(10,0,tagP)}px)`,
+          background:`${C.tealDark}80`,
+          border:`1px solid ${C.teal}40`,
+          borderRadius:8, padding:'10px 20px',
+        }}>
+          <div style={{fontFamily:"'DM Sans',sans-serif", fontSize:12, color:C.tealLight, letterSpacing:'0.1em'}}>
+            MON PROJET FONDATEUR
+          </div>
+          <div style={{fontFamily:"'DM Sans',sans-serif", fontSize:13, color:C.offWhite, marginTop:4, opacity:0.85}}>
+            PreventIA-LaB · PreventIA-Senior-LaB
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Scene 6: Call to action (24–28s)
+function Scene6({ time }) {
+  const fadeIn = easeOutCubic(progress(time, 24.0, 25.2));
+  const op = fadeIn;
+
+  const titleP = easeOutBack(progress(time, 24.2, 25.5));
+  const subP   = easeOutCubic(progress(time, 24.8, 26.0));
+  const ctaP   = easeOutBack(progress(time, 25.4, 26.5));
+  const emailP = easeOutCubic(progress(time, 26.0, 27.0));
+
+  // Pulsing ring
+  const pulse = 0.5 + 0.5 * Math.sin(time * 3);
+
+  return (
+    <div style={{
+      position:'absolute', inset:0, opacity: op,
+      display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+    }}>
+      {/* Pulse rings */}
+      {[1,2,3].map(i => (
+        <div key={i} style={{
+          position:'absolute', borderRadius:'50%',
+          width: 200 + i*80, height: 200 + i*80,
+          border:`1px solid ${C.teal}`,
+          opacity: (0.3 - i*0.08) * (0.4 + 0.6 * Math.sin(time*2 - i*0.8)),
+          transform:`scale(${1 + i*0.05*pulse})`,
+        }} />
+      ))}
+
+      <div style={{
+        fontFamily:"'DM Serif Display', serif",
+        fontSize:13, letterSpacing:'0.3em', textTransform:'uppercase',
+        color: C.teal, marginBottom:16,
+        opacity: titleP,
+        transform:`translateY(${lerp(-20,0,titleP)}px)`,
+      }}>Je cherche une alternance</div>
+
+      <div style={{
+        fontFamily:"'DM Serif Display', serif",
+        fontSize:54, color: C.white, textAlign:'center', lineHeight:1.1,
+        opacity: titleP,
+        transform:`scale(${lerp(0.85,1,titleP)})`,
+        textShadow:`0 0 60px ${C.teal}40`,
+      }}>
+        Travaillons<br />
+        <span style={{ color: C.teal }}>ensemble.</span>
+      </div>
+
+      <div style={{
+        fontFamily:"'DM Sans', sans-serif",
+        fontSize:16, fontWeight:300, color: C.offWhite,
+        marginTop:24, opacity: subP, textAlign:'center', lineHeight:1.7,
+        transform:`translateY(${lerp(15,0,subP)}px)`,
+      }}>
+        Master Informatique · IPSSI · Bordeaux<br />
+        <span style={{opacity:0.7}}>Alternance à partir de novembre 2026</span>
+      </div>
+
+      {/* CTA button */}
+      <div style={{
+        marginTop:36, opacity: ctaP,
+        transform:`scale(${lerp(0.8,1,ctaP)})`,
+        background:`linear-gradient(135deg, ${C.teal}cc, oklch(0.5 0.16 210)cc)`,
+        borderRadius:48, padding:'16px 48px',
+        boxShadow:`0 0 60px ${C.teal}40`,
+        cursor:'pointer',
+      }}>
+        <span style={{
+          fontFamily:"'DM Sans', sans-serif",
+          fontWeight:600, fontSize:16, color:'#fff',
+          letterSpacing:'0.05em',
+        }}>Me contacter</span>
+      </div>
+
+      {/* Email + GitHub */}
+      <div style={{ marginTop:20, opacity: emailP, display:'flex', flexDirection:'column', alignItems:'center', gap:10 }}>
+        <div style={{ fontFamily:"'DM Sans', sans-serif", fontSize:14, color: C.tealLight, letterSpacing:'0.08em' }}>
+          laurebonnef@gmail.com
+        </div>
+        <div style={{
+          display:'flex', alignItems:'center', gap:8,
+          background:`${C.navy}99`,
+          border:`1px solid ${C.teal}50`,
+          borderRadius:24, padding:'6px 18px',
+        }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill={C.tealLight}>
+            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/>
+          </svg>
+          <span style={{ fontFamily:"'DM Sans',sans-serif", fontSize:13, color: C.tealLight, letterSpacing:'0.05em' }}>
+            github.com/laurebonnefond
+          </span>
+        </div>
+      </div>
+
+      {/* Logo bottom */}
+      <div style={{
+        position:'absolute', bottom:30,
+        display:'flex', alignItems:'center', gap:12,
+        opacity: emailP * 0.7,
+      }}>
+        <img src="uploads/logo.png" alt="" style={{ width:32, height:32, objectFit:'contain' }} />
+        <span style={{
+          fontFamily:"'DM Sans',sans-serif", fontSize:12,
+          color: C.tealLight, letterSpacing:'0.1em', textTransform:'uppercase',
+        }}>PréventIA-Lab · Prévenir · Comprendre · Agir</span>
+      </div>
+    </div>
+  );
+}
+
+// ── Background
+function Background({ time }) {
+  const bgShift = Math.sin(time * 0.15) * 0.5;
+  return (
+    <div style={{
+      position:'absolute', inset:0,
+      background:`linear-gradient(${135 + bgShift * 10}deg, 
+        oklch(0.08 0.04 240) 0%, 
+        oklch(0.12 0.06 220) 40%, 
+        oklch(0.10 0.05 200) 100%)`,
+    }}>
+      <Particles count={50} time={time} />
+      {/* Subtle grid */}
+      <svg style={{ position:'absolute', inset:0, width:'100%', height:'100%', opacity:0.04 }}>
+        <defs>
+          <pattern id="grid" width="60" height="60" patternUnits="userSpaceOnUse">
+            <path d="M 60 0 L 0 0 0 60" fill="none" stroke={C.teal} strokeWidth="0.5"/>
+          </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#grid)"/>
+      </svg>
+    </div>
+  );
+}
+
+// ── Main App
+function App() {
+  return (
+    <Stage width={1280} height={720} duration={28}
+      background="oklch(0.08 0.04 240)"
+      style={{ fontFamily:"'DM Sans', sans-serif" }}
+    >
+      <TimelineContent />
+    </Stage>
+  );
+}
+
+function TimelineContent() {
+  const time = useTime();
+
+  // Update screen label for comments
+  const rootRef = useRef(null);
+  useEffect(() => {
+    if (rootRef.current) {
+      rootRef.current.setAttribute('data-screen-label', `t=${Math.floor(time)}s`);
+    }
+  }, [Math.floor(time)]);
+
+  const sceneLabels = [
+    [0, 3.5, '01 Intro'],
+    [3.5, 8.0, '02 Profil'],
+    [8.0, 14.0, '03 Piliers'],
+    [14.0, 19.0, '04 Compétences'],
+    [19.0, 24.0, '05 Motivation'],
+    [24.0, 28.0, '06 CTA'],
+  ];
+  const currentScene = sceneLabels.find(([s,e]) => time >= s && time < e)?.[2] || '';
+
+  return (
+    <div ref={rootRef} data-screen-label={`t=${Math.floor(time)}s`}
+      style={{ position:'relative', width:'100%', height:'100%', overflow:'hidden' }}>
+      <Background time={time} />
+      {time < 3.8  && <Scene1 time={time} />}
+      {time >= 3.2 && time < 8.3  && <Scene2 time={time} />}
+      {time >= 7.7 && time < 14.3 && <Scene3 time={time} />}
+      {time >= 13.7 && time < 19.3 && <Scene4 time={time} />}
+      {time >= 18.7 && time < 24.5 && <Scene5 time={time} />}
+      {time >= 23.2 && <Scene6 time={time} />}
+
+      {/* Scene label overlay (subtle) */}
+      <div style={{
+        position:'absolute', top:16, right:20,
+        fontFamily:"'DM Sans',sans-serif", fontSize:10,
+        color:`${C.teal}60`, letterSpacing:'0.1em',
+        pointerEvents:'none',
+      }}>{currentScene}</div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
